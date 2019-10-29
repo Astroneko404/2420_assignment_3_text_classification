@@ -1,12 +1,14 @@
-#### HOMEWORK 3 (CS 2731)
+### HOMEWORK 3 (CS 2731)
 ##### Assigned: October 22, 2019
 ##### Due: November 5, 2019 (before midnight)
 This assignment provides hands-on experience with 1) applying baseline machine learning methods 
 for a text classification task using bag-of-words and vector semantics, and 2) posing a research 
 question and setting up an experiment to address the question. 
 To do so, you will develop classifiers for toxicity of user comments to news articles, using the 
-annotated constructiveness and toxicity corpus from the SFU opinions and comments corpus 
-(if you want more background, click here). In particular, given a comment from Column F, predict 
+annotated constructiveness and 
+[toxicity corpus](http://people.cs.pitt.edu/~litman/courses/cs2731/hw/hw3/SFUcorpus.xlsx) 
+from the SFU opinions and comments corpus (if you want more background, click 
+[here](https://github.com/sfu-discourse-lab/SOCC#constructiveness)). In particular, given a comment from Column F, predict 
 the level of toxicity (use the left-most/first number in Column I of the corresponding row).
 
 #### Main Tasks
