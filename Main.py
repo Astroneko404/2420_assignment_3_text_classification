@@ -5,9 +5,24 @@ import numpy
 import pandas as pd
 from random import Random
 import re
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import recall_score
+
+
+def train_test_split(toxicity_shuffled_in, text_vector_in, i):
+    train_X, train_Y, test_X, test_Y = [], [], [], []
+
+    for label in range(1, 5):  # Toxicity score values only have 1, 2, 3 and 4
+        for idx in toxicity[label]:
+            if idx not in toxicity_shuffled_in[label][i]:
+                train_X.append(text_vector_in[idx])
+                train_Y.append(label)
+            else:
+                test_X.append(text_vector_in[idx])
+                test_Y.append(label)
+
+    return train_X, train_Y, test_X, test_Y
 
 
 if __name__ == '__main__':
@@ -21,7 +36,8 @@ if __name__ == '__main__':
 
     stop_words = set(stopwords.words('english'))
     lemmatizer = WordNetLemmatizer()
-    vectorizer = CountVectorizer()
+    vectorizer_bow = CountVectorizer()
+    vectorizer_tfidf = TfidfVectorizer()
     # vector_model = KeyedVectors.load_word2vec_format(
     #     'model/GoogleNews-vectors-negative300.bin',
     #     binary=True,
@@ -91,42 +107,13 @@ if __name__ == '__main__':
     # Bag of words
     ################
     text_list = corpus['comment_text'].tolist()
-    text_vector = vectorizer.fit_transform(text_list).toarray()
+    text_vector_bow = vectorizer_bow.fit_transform(text_list).toarray()
     recall_micro_total = 0
+    recall_macro_total = 0
+    mvote_total = 0
 
     for i in range(k):  # Cross validation
-        train_X, train_Y = [], []
-        test_X, test_Y = [], []
-
-        # Manually add train and test data
-        for j in toxicity[1]:
-            if j not in toxicity_shuffled[1][i]:
-                train_X.append(text_vector[j])
-                train_Y.append(1)
-            else:
-                test_X.append(text_vector[j])
-                test_Y.append(1)
-        for j in toxicity[2]:
-            if j not in toxicity_shuffled[2][i]:
-                train_X.append(text_vector[j])
-                train_Y.append(2)
-            else:
-                test_X.append(text_vector[j])
-                test_Y.append(2)
-        for j in toxicity[3]:
-            if j not in toxicity_shuffled[3][i]:
-                train_X.append(text_vector[j])
-                train_Y.append(3)
-            else:
-                test_X.append(text_vector[j])
-                test_Y.append(3)
-        for j in toxicity[4]:
-            if j not in toxicity_shuffled[4][i]:
-                train_X.append(text_vector[j])
-                train_Y.append(4)
-            else:
-                test_X.append(text_vector[j])
-                test_Y.append(4)
+        train_X, train_Y, test_X, test_Y = train_test_split(toxicity_shuffled, text_vector_bow, i)
 
         # Predict and calculate the recall
         model = LogisticRegression(
@@ -135,8 +122,62 @@ if __name__ == '__main__':
             solver='lbfgs'
         ).fit(train_X, train_Y)
         pred_Y = model.predict(test_X).tolist()
+        major_Y = [1 for _ in range(len(pred_Y))]
         recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
+        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
+        mvote_total += recall_score(test_Y, major_Y, average='micro')
 
-    recall_micro_total /= 5.0
-    print('Bag of words:')
-    print('Recall (micro average) is', recall_micro_total)
+    recall_micro_total /= float(k)
+    recall_macro_total /= float(k)
+    mvote_total /= float(k)
+
+    print('Majority vote:\n', mvote_total)
+    print()
+    print('Bag of words:\n',
+          'Recall (micro average):', recall_micro_total,
+          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+    print()
+
+    ###################
+    # TF-IDF (Sparse)
+    ###################
+    text_list = corpus['comment_text'].tolist()
+    recall_micro_total = 0
+    recall_macro_total = 0
+
+    for i in range(k):  # Cross validation
+        train_X, train_Y, test_X, test_Y = [], [], [], []
+
+        for label in range(1, 5):
+            for idx in toxicity[label]:
+                if idx not in toxicity_shuffled[label][i]:
+                    train_X.append(corpus.at[idx, 'comment_text'])
+                    train_Y.append(label)
+                else:
+                    test_X.append(corpus.at[idx, 'comment_text'])
+                    test_Y.append(label)
+
+        train_X = vectorizer_tfidf.fit_transform(train_X)
+        test_X = vectorizer_tfidf.transform(test_X)
+
+        # Predict and calculate the recall
+        model = LogisticRegression(
+            multi_class='multinomial',
+            random_state=0,
+            solver='lbfgs'
+        ).fit(train_X, train_Y)
+        pred_Y = model.predict(test_X).tolist()
+        major_Y = [1 for _ in range(len(pred_Y))]
+        recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
+        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
+
+    recall_micro_total /= float(k)
+    recall_macro_total /= float(k)
+    print('TF_IDF:\n',
+          'Recall (micro average):', recall_micro_total,
+          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+    print()
+
+    ############
+    # Word2Vec
+    ############
