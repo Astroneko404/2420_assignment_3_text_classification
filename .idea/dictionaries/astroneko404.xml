@@ -2,6 +2,7 @@
   <dictionary name="astroneko404">
     <words>
       <w>dataframe</w>
+      <w>lemmatize</w>
       <w>nltk</w>
     </words>
   </dictionary>
