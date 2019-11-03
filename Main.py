@@ -8,6 +8,7 @@ import re
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import recall_score
+from sklearn.preprocessing import normalize
 
 
 def train_test_split(toxicity_shuffled_in, text_vector_in, i):
@@ -25,6 +26,15 @@ def train_test_split(toxicity_shuffled_in, text_vector_in, i):
     return train_X, train_Y, test_X, test_Y
 
 
+def get_sentence_vector(model, s_list, dim):
+    result = sum([model[word] for word in s_list if word in model])
+    if isinstance(result, int):  # row 424 in the original xlsx file
+        result = [0 for _ in range(dim)]
+    else:
+        result = [i / len(s_list) for i in result]
+    return result
+
+
 if __name__ == '__main__':
 
     ############################
@@ -38,12 +48,6 @@ if __name__ == '__main__':
     lemmatizer = WordNetLemmatizer()
     vectorizer_bow = CountVectorizer()
     vectorizer_tfidf = TfidfVectorizer()
-    # vector_model = KeyedVectors.load_word2vec_format(
-    #     'model/GoogleNews-vectors-negative300.bin',
-    #     binary=True,
-    #     limit=150000,  # Reduce loading time
-    #     unicode_errors='ignore'
-    # )
 
     # Remove useless columns
     corpus = corpus.drop('comment_counter', axis=1)
@@ -151,10 +155,10 @@ if __name__ == '__main__':
         for label in range(1, 5):
             for idx in toxicity[label]:
                 if idx not in toxicity_shuffled[label][i]:
-                    train_X.append(corpus.at[idx, 'comment_text'])
+                    train_X.append(text_list[idx])
                     train_Y.append(label)
                 else:
-                    test_X.append(corpus.at[idx, 'comment_text'])
+                    test_X.append(text_list[idx])
                     test_Y.append(label)
 
         train_X = vectorizer_tfidf.fit_transform(train_X)
@@ -181,3 +185,48 @@ if __name__ == '__main__':
     ############
     # Word2Vec
     ############
+    vector_model = KeyedVectors.load_word2vec_format(
+        # 'model/GoogleNews-vectors-negative300.bin',
+        'model/glove.twitter.27B.100d_new.txt',
+        binary=False,
+        limit=150000,  # Reduce loading time
+        unicode_errors='ignore'
+    )
+    text_list = corpus['comment_text'].tolist()
+    recall_micro_total = 0
+    recall_macro_total = 0
+
+    for i in range(k):  # Cross validation
+        train_X, train_Y, test_X, test_Y = [], [], [], []
+
+        for label in range(1, 5):
+            for idx in toxicity[label]:
+                doc = text_list[idx].split()
+                doc_vec = get_sentence_vector(vector_model, doc, 100)
+                if idx not in toxicity_shuffled[label][i]:
+                    train_X.append(doc_vec)
+                    train_Y.append(label)
+                else:
+                    test_X.append(doc_vec)
+                    test_Y.append(label)
+
+        # Normalize vectors
+        train_X = normalize(train_X, norm='l2')
+        test_X = normalize(test_X, norm='l2')
+
+        model = LogisticRegression(
+            multi_class='multinomial',
+            random_state=0,
+            solver='lbfgs'
+        ).fit(list(train_X), train_Y)
+        pred_Y = model.predict(test_X).tolist()
+        major_Y = [1 for _ in range(len(pred_Y))]
+        recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
+        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
+
+    recall_micro_total /= float(k)
+    recall_macro_total /= float(k)
+    print('Word2Vec:\n',
+          'Recall (micro average):', recall_micro_total,
+          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+    print()
