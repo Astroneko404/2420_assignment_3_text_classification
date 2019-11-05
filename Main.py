@@ -69,6 +69,12 @@ if __name__ == '__main__':
         corpus.at[idx, 'toxicity_level'] = int(cell_split[0])
         # print(idx, corpus.at[idx, 'toxicity_level'])
 
+    # New toxicity level for experiment in step 5
+    toxicity_level_new = []
+    for idx, item in corpus['toxicity_level'].iteritems():
+        toxicity_level_new.append(1) if item == 1 else toxicity_level_new.append(2)
+    corpus['toxicity_level_new'] = toxicity_level_new
+
     # Preprocess each comment text (in column F)
     for idx, text in corpus['comment_text'].iteritems():
         ## Tokenize
@@ -100,7 +106,7 @@ if __name__ == '__main__':
     ######################
     # Train & test split
     ######################
-    k = 5  # Cross validation parameter
+    k = 35  # K-fold validation parameter
     toxicity_shuffled = toxicity.copy()
     for label, idx_list in toxicity_shuffled.items():
         Random(0).shuffle(idx_list)
@@ -113,7 +119,6 @@ if __name__ == '__main__':
     text_list = corpus['comment_text'].tolist()
     text_vector_bow = vectorizer_bow.fit_transform(text_list).toarray()
     recall_micro_total = 0
-    recall_macro_total = 0
     mvote_total = 0
 
     for i in range(k):  # Cross validation
@@ -128,18 +133,15 @@ if __name__ == '__main__':
         pred_Y = model.predict(test_X).tolist()
         major_Y = [1 for _ in range(len(pred_Y))]
         recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
-        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
         mvote_total += recall_score(test_Y, major_Y, average='micro')
 
     recall_micro_total /= float(k)
-    recall_macro_total /= float(k)
     mvote_total /= float(k)
 
     print('Majority vote:\n', mvote_total)
     print()
     print('Bag of words:\n',
-          'Recall (micro average):', recall_micro_total,
-          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+          'Recall (micro average):', recall_micro_total)  # Macro is not suitable for skewed class
     print()
 
     ###################
@@ -147,19 +149,22 @@ if __name__ == '__main__':
     ###################
     text_list = corpus['comment_text'].tolist()
     recall_micro_total = 0
-    recall_macro_total = 0
+    recall_micro_total_2 = 0
 
     for i in range(k):  # Cross validation
         train_X, train_Y, test_X, test_Y = [], [], [], []
+        train_Y_2, test_Y_2 = [], []
 
         for label in range(1, 5):
             for idx in toxicity[label]:
                 if idx not in toxicity_shuffled[label][i]:
                     train_X.append(text_list[idx])
                     train_Y.append(label)
+                    train_Y_2.append(corpus.at[idx, 'toxicity_level_new'])
                 else:
                     test_X.append(text_list[idx])
                     test_Y.append(label)
+                    test_Y_2.append(corpus.at[idx, 'toxicity_level_new'])
 
         train_X = vectorizer_tfidf.fit_transform(train_X)
         test_X = vectorizer_tfidf.transform(test_X)
@@ -170,16 +175,23 @@ if __name__ == '__main__':
             random_state=0,
             solver='lbfgs'
         ).fit(train_X, train_Y)
+        model_2 = LogisticRegression(
+            multi_class='multinomial',
+            random_state=0,
+            solver='lbfgs'
+        ).fit(train_X, train_Y_2)
+
+        # Pred evaluation
         pred_Y = model.predict(test_X).tolist()
-        major_Y = [1 for _ in range(len(pred_Y))]
+        pred_Y_2 = model_2.predict(test_X).tolist()
         recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
-        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
+        recall_micro_total_2 += recall_score(test_Y_2, pred_Y_2, average='micro')
 
     recall_micro_total /= float(k)
-    recall_macro_total /= float(k)
+    recall_micro_total_2 /= float(k)
     print('TF_IDF:\n',
           'Recall (micro average):', recall_micro_total,
-          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+          '\t Recall (micro average) on new labels:', recall_micro_total_2)
     print()
 
     ############
@@ -194,10 +206,11 @@ if __name__ == '__main__':
     )
     text_list = corpus['comment_text'].tolist()
     recall_micro_total = 0
-    recall_macro_total = 0
+    recall_micro_total_2 = 0
 
     for i in range(k):  # Cross validation
         train_X, train_Y, test_X, test_Y = [], [], [], []
+        train_Y_2, test_Y_2 = [], []
 
         for label in range(1, 5):
             for idx in toxicity[label]:
@@ -206,9 +219,11 @@ if __name__ == '__main__':
                 if idx not in toxicity_shuffled[label][i]:
                     train_X.append(doc_vec)
                     train_Y.append(label)
+                    train_Y_2.append(corpus.at[idx, 'toxicity_level_new'])
                 else:
                     test_X.append(doc_vec)
                     test_Y.append(label)
+                    test_Y_2.append(corpus.at[idx, 'toxicity_level_new'])
 
         # Normalize vectors
         train_X = normalize(train_X, norm='l2')
@@ -219,14 +234,21 @@ if __name__ == '__main__':
             random_state=0,
             solver='lbfgs'
         ).fit(list(train_X), train_Y)
+        model_2 = LogisticRegression(
+            multi_class='multinomial',
+            random_state=0,
+            solver='lbfgs'
+        ).fit(list(train_X), train_Y_2)
+
+        # Evaluation
         pred_Y = model.predict(test_X).tolist()
-        major_Y = [1 for _ in range(len(pred_Y))]
+        pred_Y_2 = model.predict(test_X).tolist()
         recall_micro_total += recall_score(test_Y, pred_Y, average='micro')
-        recall_macro_total += recall_score(test_Y, pred_Y, average='macro')
+        recall_micro_total_2 += recall_score(test_Y_2, pred_Y_2, average='micro')
 
     recall_micro_total /= float(k)
-    recall_macro_total /= float(k)
+    recall_micro_total_2 /= float(k)
     print('Word2Vec:\n',
           'Recall (micro average):', recall_micro_total,
-          '\tRecall (macro average):', recall_macro_total)  # Not suitable for skewed class
+          '\t Recall (micro average) on new labels:', recall_micro_total_2)
     print()
