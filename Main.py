@@ -7,7 +7,7 @@ from random import Random
 import re
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import recall_score
+from sklearn.metrics import precision_score, recall_score
 from sklearn.preprocessing import normalize
 
 
